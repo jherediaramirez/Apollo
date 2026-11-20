@@ -195,6 +195,11 @@ namespace audio {
       }
     }
 
+    // Capture takes place on this thread. Raise the priority before creating the
+    // capture device: on Windows the device registers this thread with MMCSS, and
+    // setting the thread priority afterwards would replace that higher MMCSS priority.
+    platf::adjust_thread_priority(platf::thread_priority_e::critical);
+
     auto frame_size = config.packetDuration * stream.sampleRate / 1000;
     auto mic = control->microphone(stream.mapping, stream.channelCount, stream.sampleRate, frame_size);
     if (!mic) {
@@ -203,9 +208,6 @@ namespace audio {
 
     // Audio is initialized, so we don't want to print the failure message
     init_failure_fg.disable();
-
-    // Capture takes place on this thread
-    platf::adjust_thread_priority(platf::thread_priority_e::critical);
 
     auto samples = std::make_shared<sample_queue_t::element_type>(30);
     std::thread thread {encodeThread, samples, config, channel_data};
