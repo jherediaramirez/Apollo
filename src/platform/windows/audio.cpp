@@ -5,6 +5,7 @@
 #define INITGUID
 
 // standard includes
+#include <chrono>
 #include <format>
 
 // platform includes
@@ -630,7 +631,15 @@ namespace platf::audio {
         }
 
         if (buffer_flags & AUDCLNT_BUFFERFLAGS_DATA_DISCONTINUITY) {
-          BOOST_LOG(debug) << "Audio capture signaled buffer discontinuity";
+          // A discontinuity means captured audio was skipped (an audible glitch on the host side).
+          // One is expected whenever capture starts. Warn at most once every 10 seconds.
+          ++discontinuity_count;
+          auto now = std::chrono::steady_clock::now();
+          if (now - last_discontinuity_warning >= std::chrono::seconds(10)) {
+            BOOST_LOG(warning) << "Audio capture signaled buffer discontinuity ("sv << discontinuity_count << " since the last report)"sv;
+            last_discontinuity_warning = now;
+            discontinuity_count = 0;
+          }
         }
 
         sample_aligned.uninitialized = std::end(sample_buf) - sample_buf_pos;
@@ -680,6 +689,10 @@ namespace platf::audio {
     int channels;
 
     HANDLE mmcss_task_handle = nullptr;
+
+    // Rate limiting for the buffer discontinuity warning
+    std::chrono::steady_clock::time_point last_discontinuity_warning {};
+    std::uint32_t discontinuity_count = 0;
   };
 
   class audio_control_t: public ::platf::audio_control_t {
