@@ -1505,7 +1505,17 @@ namespace platf {
 
     // If USO is not supported, this will fail and the caller will fall back to unbatched sends.
     DWORD bytes_sent;
-    return WSASendMsg((SOCKET) send_info.native_socket, &msg, 0, &bytes_sent, nullptr, nullptr) != SOCKET_ERROR;
+    if (WSASendMsg((SOCKET) send_info.native_socket, &msg, 0, &bytes_sent, nullptr, nullptr) == SOCKET_ERROR) {
+      // The caller retries on every frame, so only report the first failure
+      auto winerr = WSAGetLastError();
+      static std::atomic<bool> failure_logged = false;
+      if (!failure_logged.exchange(true)) {
+        BOOST_LOG(warning) << "Batched UDP send failed with error "sv << winerr << ", falling back to one send per packet. Further failures will not be logged."sv;
+      }
+      return false;
+    }
+
+    return true;
   }
 
   bool send(send_info_t &send_info) {
