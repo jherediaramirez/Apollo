@@ -63,6 +63,7 @@ set(PLATFORM_TARGET_FILES
         "${CMAKE_SOURCE_DIR}/src/platform/windows/virtual_display.cpp"
         "${CMAKE_SOURCE_DIR}/src/platform/windows/utils.h"
         "${CMAKE_SOURCE_DIR}/src/platform/windows/utils.cpp"
+        "${CMAKE_SOURCE_DIR}/src/platform/windows/text_input.cpp"
         "${CMAKE_SOURCE_DIR}/third-party/sudovda/sudovda-ioctl.h"
         "${CMAKE_SOURCE_DIR}/third-party/sudovda/sudovda.h"
         "${CMAKE_SOURCE_DIR}/third-party/ViGEmClient/src/ViGEmClient.cpp"
@@ -90,6 +91,7 @@ list(PREPEND PLATFORM_LIBRARIES
         libwinpthread.a
         minhook::minhook
         ntdll
+        ole32
         setupapi
         shlwapi
         synchronization.lib

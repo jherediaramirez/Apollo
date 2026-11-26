@@ -231,6 +231,10 @@ LONG changeDisplaySettings2(const wchar_t* deviceName, int width, int height, in
 					sourceMode->width = width;
 					sourceMode->height = height;
 
+					// The virtual display only offers landscape modes, so a portrait request
+					// (height > width) is done by rotating the display 90 degrees.
+					targetInfo->rotation = height > width ? DISPLAYCONFIG_ROTATION_ROTATE90 : DISPLAYCONFIG_ROTATION_IDENTITY;
+
 					targetInfo->refreshRate = {(UINT32)refresh_rate, 1000};
 
 					// Apply the changes
@@ -283,10 +287,20 @@ LONG changeDisplaySettings(const wchar_t* deviceName, int width, int height, int
 
 		wprintf(L"[SUDOVDA] Applying baseline display mode [%dx%dx%d] for %ls.\n", width, height, targetRefreshRate, deviceName);
 
+		// Portrait (height > width): the virtual display only offers landscape modes,
+		// so ask Windows for the portrait size with a 90 degree rotation.
+		// With DMDO_90, dmPelsWidth/Height are the already-rotated (portrait) size.
+		const bool portrait = height > width;
+
 		devMode.dmPelsWidth = width;
 		devMode.dmPelsHeight = height;
 		devMode.dmDisplayFrequency = targetRefreshRate;
-		devMode.dmFields = DM_PELSWIDTH | DM_PELSHEIGHT | DM_DISPLAYFREQUENCY;
+		devMode.dmDisplayOrientation = portrait ? DMDO_90 : DMDO_DEFAULT;
+		devMode.dmFields = DM_PELSWIDTH | DM_PELSHEIGHT | DM_DISPLAYFREQUENCY | DM_DISPLAYORIENTATION;
+
+		if (portrait) {
+			wprintf(L"[SUDOVDA] Portrait mode requested, rotating display 90 degrees.\n");
+		}
 
 		auto res = ChangeDisplaySettingsExW(deviceName, &devMode, NULL, CDS_UPDATEREGISTRY, NULL);
 

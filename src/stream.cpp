@@ -32,6 +32,7 @@ extern "C" {
 #include "stream.h"
 #include "sync.h"
 #include "system_tray.h"
+#include "text_input.h"
 #include "thread_safe.h"
 #include "utility.h"
 
@@ -53,6 +54,7 @@ extern "C" {
 #define IDX_SET_CLIPBOARD 16
 #define IDX_FILE_TRANSFER_NONCE_REQUEST 17
 #define IDX_SET_ADAPTIVE_TRIGGERS 18
+#define IDX_SET_TEXT_INPUT_STATE 19
 
 static const short packetTypes[] = {
   0x0305,  // Start A
@@ -74,6 +76,7 @@ static const short packetTypes[] = {
   0x3001,  // Set Clipboard (Apollo protocol extension)
   0x3002,  // File transfer nonce request (Apollo protocol extension)
   0x5503,  // Set Adaptive triggers (Sunshine protocol extension)
+  0x3003,  // Set text input state, i.e. show/hide client keyboard (Apollo protocol extension)
 };
 
 namespace asio = boost::asio;
@@ -217,6 +220,12 @@ namespace stream {
 
     // Sunshine protocol extension
     SS_HDR_METADATA metadata;
+  };
+
+  struct control_text_input_state_t {
+    control_header_v2 header;
+
+    std::uint8_t active;  // 1 = a text field on the host has focus, 0 = none
   };
 
   typedef struct control_encrypted_t {
@@ -409,6 +418,8 @@ namespace stream {
 
       platf::feedback_queue_t feedback_queue;
       safe::mail_raw_t::event_t<video::hdr_info_t> hdr_queue;
+
+      bool text_input_active = false;  // Last text input state sent to this client
     } control;
 
     std::uint32_t launch_session_id;
@@ -927,6 +938,35 @@ namespace stream {
     return 0;
   }
 
+  /**
+   * @brief Tell the client whether a text field on the host has focus, so it can show its keyboard.
+   * @details Apollo protocol extension. Clients that don't know this packet ignore it.
+   */
+  int send_text_input_state(session_t *session, bool active) {
+    if (!session->control.peer) {
+      return -1;
+    }
+
+    control_text_input_state_t plaintext {};
+    plaintext.header.type = packetTypes[IDX_SET_TEXT_INPUT_STATE];
+    plaintext.header.payloadLength = sizeof(control_text_input_state_t) - sizeof(control_header_v2);
+    plaintext.active = active ? 1 : 0;
+
+    std::array<std::uint8_t, sizeof(control_encrypted_t) + crypto::cipher::round_to_pkcs7_padded(sizeof(plaintext)) + crypto::cipher::tag_size>
+      encrypted_payload;
+
+    auto payload = encode_control(session, util::view(plaintext), encrypted_payload);
+    if (session->broadcast_ref->control_server.send(payload, session->control.peer)) {
+      TUPLE_2D(port, addr, platf::from_sockaddr_ex((sockaddr *) &session->control.peer->address.address));
+      BOOST_LOG(warning) << "Couldn't send text input state to ["sv << addr << ':' << port << ']';
+
+      return -1;
+    }
+
+    BOOST_LOG(debug) << "Sent text input state: " << active;
+    return 0;
+  }
+
   void controlBroadcastThread(control_server_t *server) {
     server->map(packetTypes[IDX_PERIODIC_PING], [](session_t *session, const std::string_view &payload) {
       BOOST_LOG(verbose) << "type [IDX_PERIODIC_PING]"sv;
@@ -1182,6 +1222,13 @@ namespace stream {
               auto hdr_info = hdr_queue->pop();
 
               send_hdr_mode(session, std::move(hdr_info));
+            }
+
+            const bool text_input_active = text_input::is_focused();
+            if (session->control.peer && text_input_active != session->control.text_input_active) {
+              if (send_text_input_state(session, text_input_active) == 0) {
+                session->control.text_input_active = text_input_active;
+              }
             }
           }
 

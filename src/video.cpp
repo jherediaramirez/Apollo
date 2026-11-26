@@ -826,9 +826,9 @@ namespace video {
       },
       {
         // SDR-specific options
-        {"profile"s, [](const config_t &cfg) {
-           if (cfg.profile == 66) return "baseline"s;
-           if (cfg.profile == 77) return "main"s;
+        // Apollo's config_t has no client profile field (it always encodes H.264 High,
+        // see ctx->profile below), so this backported option is fixed to "high".
+        {"profile"s, [](const config_t &) {
            return "high"s;
          }},
       },
